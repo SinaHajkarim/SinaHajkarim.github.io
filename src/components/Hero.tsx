@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowDown, Linkedin, GraduationCap } from 'lucide-react'
 import { profile } from '../data/content'
@@ -9,22 +9,35 @@ const ease = [0.22, 1, 0.36, 1] as const
 
 const FORMATIONS: { id: Formation; label: string }[] = [
   { id: 'face', label: 'Portrait' },
-  { id: 'free', label: 'Disperse' },
-  { id: 'grid', label: 'Grid' },
-  { id: 'line', label: 'Line' },
-  { id: 'orbit', label: 'Orbit' },
-  { id: 'sina', label: 'Spell' },
+  { id: 'sina', label: 'Name' },
 ]
 
+// how long a commanded formation holds before releasing back to free drift
+const HOLD_MS: Partial<Record<Formation, number>> = { face: 3200, sina: 2600 }
+
 const panelLabel = (f: Formation) =>
-  f === 'free'
-    ? 'MOVE CURSOR → FORM SWARM'
-    : f === 'face'
-      ? 'EDGE-DETECTED PORTRAIT'
-      : `FORMATION: ${f.toUpperCase()}`
+  f === 'face'
+    ? 'EDGE-DETECTED PORTRAIT'
+    : f === 'sina'
+      ? 'FORMATION: SINA'
+      : 'MOVE CURSOR → FORM SWARM'
 
 export default function Hero() {
   const [formation, setFormation] = useState<Formation>('face')
+  const revertRef = useRef<number | undefined>(undefined)
+
+  // form the shape, then release the swarm back to free drift
+  const hold = (id: Formation) => {
+    window.clearTimeout(revertRef.current)
+    setFormation(id)
+    revertRef.current = window.setTimeout(() => setFormation('free'), HOLD_MS[id] ?? 2600)
+  }
+
+  // intro: assemble the portrait on load, then disperse to the live swarm
+  useEffect(() => {
+    revertRef.current = window.setTimeout(() => setFormation('free'), 3600)
+    return () => window.clearTimeout(revertRef.current)
+  }, [])
 
   return (
     <section id="hero" className="hero">
@@ -70,8 +83,7 @@ export default function Hero() {
             <button
               key={f.id}
               className={formation === f.id ? 'active' : ''}
-              onClick={() => setFormation(f.id)}
-              aria-pressed={formation === f.id}
+              onClick={() => hold(f.id)}
             >
               {f.label}
             </button>

@@ -150,8 +150,10 @@ export default function SwarmCanvas({ formation }: { formation: Formation }) {
       ctx.strokeStyle = 'rgba(127,208,255,0.05)'
       ctx.lineWidth = 1
       const s = 28
-      for (let x = 0; x <= width; x += s) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke() }
-      for (let y = 0; y <= height; y += s) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke() }
+      ctx.beginPath()
+      for (let x = 0; x <= width; x += s) { ctx.moveTo(x, 0); ctx.lineTo(x, height) }
+      for (let y = 0; y <= height; y += s) { ctx.moveTo(0, y); ctx.lineTo(width, y) }
+      ctx.stroke()
     }
 
     const drawDimension = (a: Agent, b: Agent) => {
@@ -240,47 +242,64 @@ export default function SwarmCanvas({ formation }: { formation: Formation }) {
         }
       }
 
-      // comms graph (skipped in face mode for portrait clarity)
+      // comms graph (skipped in face mode) — batched into one stroke for speed
       if (!faceMode) {
+        const L2 = LINK_DIST * LINK_DIST
         ctx.lineWidth = 0.7
+        ctx.strokeStyle = `rgba(${COLORS.link},0.16)`
+        ctx.setLineDash([3, 4])
+        ctx.beginPath()
         for (let i = 0; i < agents.length; i++) {
+          const a = agents[i]
           for (let j = i + 1; j < agents.length; j++) {
-            const a = agents[i], b = agents[j]
-            const d = Math.hypot(a.x - b.x, a.y - b.y)
-            if (d < LINK_DIST) {
-              ctx.strokeStyle = `rgba(${COLORS.link},${(1 - d / LINK_DIST) * 0.3})`
-              ctx.setLineDash([3, 4])
-              ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke()
-            }
+            const b = agents[j]
+            const dx = a.x - b.x, dy = a.y - b.y
+            if (dx * dx + dy * dy < L2) { ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y) }
           }
         }
+        ctx.stroke()
         ctx.setLineDash([])
       }
 
       // nodes
-      for (const a of agents) {
-        if (faceMode) {
-          // colour from photo, lifted for visibility, with low-frequency twinkle
+      if (faceMode) {
+        for (const a of agents) {
           const tw = 0.55 + 0.45 * Math.sin(t * 0.03 + a.phase)
           const r = Math.min(255, a.fr + 55)
           const g = Math.min(255, a.fg + 55)
           const b = Math.min(255, a.fb + 55)
           ctx.fillStyle = `rgba(${r},${g},${b},${0.45 + 0.55 * tw})`
           ctx.beginPath(); ctx.arc(a.x, a.y, 1.7 + 0.8 * tw, 0, Math.PI * 2); ctx.fill()
-          continue
         }
-        const near = !commanded && pointer.active && Math.hypot(pointer.x - a.x, pointer.y - a.y) < ATTRACT
-        const hot = near || commanded
-        ctx.strokeStyle = hot ? 'rgba(34,211,238,0.32)' : 'rgba(127,208,255,0.16)'
-        ctx.lineWidth = 1
-        ctx.beginPath(); ctx.arc(a.x, a.y, hot ? 7 : 6, 0, Math.PI * 2); ctx.stroke()
-        ctx.fillStyle = hot ? COLORS.cyanBright : COLORS.dim
-        ctx.beginPath(); ctx.arc(a.x, a.y, hot ? 2.4 : 1.8, 0, Math.PI * 2); ctx.fill()
-        if (a.tag && !commanded) {
+      } else {
+        const A2 = ATTRACT * ATTRACT
+        // batch all base dots into a single fill
+        ctx.fillStyle = commanded ? COLORS.cyanBright : COLORS.dim
+        ctx.beginPath()
+        for (const a of agents) {
+          if (!commanded && pointer.active) {
+            const dx = pointer.x - a.x, dy = pointer.y - a.y
+            if (dx * dx + dy * dy < A2) continue // hot nodes drawn separately
+          }
+          ctx.moveTo(a.x + 1.8, a.y); ctx.arc(a.x, a.y, 1.8, 0, Math.PI * 2)
+        }
+        ctx.fill()
+        // hot nodes near the cursor: ring + brighter dot (only a handful)
+        if (!commanded && pointer.active) {
+          ctx.lineWidth = 1
+          for (const a of agents) {
+            const dx = pointer.x - a.x, dy = pointer.y - a.y
+            if (dx * dx + dy * dy >= A2) continue
+            ctx.strokeStyle = 'rgba(34,211,238,0.32)'
+            ctx.beginPath(); ctx.arc(a.x, a.y, 7, 0, Math.PI * 2); ctx.stroke()
+            ctx.fillStyle = COLORS.cyanBright
+            ctx.beginPath(); ctx.arc(a.x, a.y, 2.4, 0, Math.PI * 2); ctx.fill()
+          }
+          // telemetry tags
           ctx.font = '7px "IBM Plex Mono", monospace'
           ctx.fillStyle = 'rgba(143,179,212,0.8)'
           ctx.textAlign = 'left'
-          ctx.fillText(a.id, a.x + 8, a.y - 6)
+          for (const a of agents) if (a.tag) ctx.fillText(a.id, a.x + 8, a.y - 6)
         }
       }
 
